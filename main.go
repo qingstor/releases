@@ -40,7 +40,12 @@ func main() {
 	setup(ctx)
 
 	for _, v := range repos {
-		listAssets(ctx, v, listReleases(ctx, v))
+		release := listReleases(ctx, v)
+		if release == nil {
+			continue
+		}
+
+		listAssets(ctx, v, release)
 	}
 
 	content, err := json.Marshal(data.data)
@@ -83,11 +88,15 @@ func setup(ctx context.Context) {
 }
 
 func listReleases(ctx context.Context, repo string) *github.RepositoryRelease {
-	release, _, err := client.Repositories.GetLatestRelease(ctx, "qingstor", repo)
+	releases, _, err := client.Repositories.ListReleases(ctx, "qingstor", repo, nil)
 	if err != nil {
 		log.Fatalf("list releases: %v", err)
 	}
-	return release
+	if len(releases) == 0 {
+		log.Printf("repo %s doesn't have releases yet", repo)
+		return nil
+	}
+	return releases[0]
 }
 
 func listAssets(ctx context.Context, repo string, release *github.RepositoryRelease) {
