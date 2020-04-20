@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<head>
+    <title>QingStor Open Source Releases</title>
+    <meta charset="utf-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no"/>
+    <meta http-equiv="x-ua-compatible" content="ie=edge"/>
+
+    <link href="https://cdn.jsdelivr.net/npm/@mdi/font@4.x/css/materialdesignicons.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/vuetify@2.x/dist/vuetify.min.css" rel="stylesheet">
+</head>
+<body>
+
+<script src="https://cdn.jsdelivr.net/npm/vue@2.x/dist/vue.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/vuetify@2.x/dist/vuetify.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/compare-versions@3.6.0/index.min.js"></script>
+
+<div id="app">
+    <v-app id="inspire">
+        <v-card>
+            <v-sheet class="pa-4 primary lighten-2">
+                <v-text-field
+                        v-model="search"
+                        label="Search QingStor Open Source Releases"
+                        dark
+                        flat
+                        solo-inverted
+                        hide-details
+                        clearable
+                        clear-icon="mdi-close-circle-outline"
+                ></v-text-field>
+            </v-sheet>
+            <v-card-text>
+                <v-treeview
+                        :items="items"
+                        :search="search"
+                        :filter="filter"
+                        :open.sync="open"
+                >
+                    <template v-slot:label="{ item }">
+                        <a v-if="item.url" v-bind:href="item.url">
+                            {{item.name}}
+                        </a>
+                        <div v-if="!item.url">
+                            {{item.name}}
+                        </div>
+                    </template>
+                </v-treeview>
+            </v-card-text>
+        </v-card>
+    </v-app>
+</div>
+<script>
+    new Vue({
+        el: '#app',
+        vuetify: new Vuetify(),
+        data: () => ({
+            releases: [],
+            init: false,
+            search: null,
+        }),
+        computed: {
+            items() {
+                if (this.init) {
+                    return this.releases
+                }
+                fetch('./data.json')
+                    .then(res => res.json())
+                    .then(data => {
+                        let id = 1
+                        let parse = (data) => {
+                            if (data.length === 0) {
+                                return []
+                            }
+
+                            let items = []
+                            for (let v of Object.keys(data)) {
+                                let x = {
+                                    "id": id,
+                                    "name": v,
+                                }
+                                id++
+
+                                if (Object.prototype.toString.call(data[v]) !== "[object String]") {
+                                    x["children"] = parse(data[v])
+                                } else {
+                                    x["url"] = data[v]
+                                }
+
+                                items.push(x)
+                            }
+
+                            items.sort((a, b) => {
+                                if (compareVersions.validate(a["name"]) && compareVersions.validate(b["name"])) {
+                                    return -compareVersions(a["name"], b["name"]);
+                                }
+                                return a["name"].localeCompare(b["name"])
+                            })
+                            return items
+                        }
+
+                        this.releases = parse(data)
+                    })
+                    .catch(err => console.warn(err))
+                this.init = true
+                return this.releases
+            },
+            filter() {
+                return (item, search, textKey) => item[textKey].indexOf(search) > -1
+            },
+        },
+    })
+</script>
+
+</body>
+</html>
