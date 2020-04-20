@@ -40,8 +40,7 @@ func main() {
 	setup(ctx)
 
 	for _, v := range repos {
-		ch := listReleases(ctx, v)
-		listAssets(ctx, v, ch)
+		listAssets(ctx, v, listReleases(ctx, v))
 	}
 
 	content, err := json.Marshal(data.data)
@@ -83,36 +82,15 @@ func setup(ctx context.Context) {
 	}
 }
 
-func listReleases(ctx context.Context, repo string) chan *github.RepositoryRelease {
-	page := 1
-
-	ch := make(chan *github.RepositoryRelease)
-
-	go func() {
-		defer close(ch)
-
-		for {
-			releases, resp, err := client.Repositories.ListReleases(ctx, "qingstor", repo, &github.ListOptions{Page: page})
-			if err != nil {
-				log.Fatalf("list releases: %v", err)
-			}
-
-			for _, v := range releases {
-				v := v
-				ch <- v
-			}
-
-			if resp.NextPage == 0 {
-				break
-			}
-			page = resp.NextPage
-		}
-	}()
-
-	return ch
+func listReleases(ctx context.Context, repo string) *github.RepositoryRelease {
+	release, _, err := client.Repositories.GetLatestRelease(ctx, "qingstor", repo)
+	if err != nil {
+		log.Fatalf("list releases: %v", err)
+	}
+	return release
 }
 
-func listAssets(ctx context.Context, repo string, ch chan *github.RepositoryRelease) {
+func listAssets(ctx context.Context, repo string, release *github.RepositoryRelease) {
 	meta, err := store.Metadata()
 	if err != nil {
 		log.Fatalf("storage meta: %v", err)
@@ -122,42 +100,39 @@ func listAssets(ctx context.Context, repo string, ch chan *github.RepositoryRele
 		log.Fatalf("storage doesn't know location")
 	}
 
-	for release := range ch {
-		// We will not upload more than 100 assets
-		assets, _, err := client.Repositories.ListReleaseAssets(ctx, "qingstor", repo, release.GetID(), &github.ListOptions{PerPage: 100})
-		if err != nil {
-			log.Fatalf("list assets: %v", err)
-		}
-
-		for _, asset := range assets {
-			wg := &sync.WaitGroup{}
-			wg.Add(1)
-
-			go func(asset *github.ReleaseAsset) {
-				defer wg.Done()
-				path := fmt.Sprintf("%s/%s/%s", repo, release.GetTagName(), asset.GetName())
-
-				log.Printf("Check if file %s exists", path)
-				_, err := store.Stat(path)
-				if err != nil && errors.Is(err, services.ErrObjectNotExist) {
-					log.Printf("File %s not exists, try to upload", path)
-					downloadAndUpload(ctx, asset, path)
-
-					err = nil
-				}
-				if err != nil {
-					log.Fatalf("storage stat: %v", err)
-				}
-
-				log.Printf("File %s exists, try to update data", path)
-				url := fmt.Sprintf("https://%s.%s.qingstor.com/%s", meta.Name, location, path)
-				data.Add(repo, release.GetTagName(), asset.GetName(), url)
-			}(asset)
-
-			wg.Wait()
-		}
+	// We will not upload more than 100 assets
+	assets, _, err := client.Repositories.ListReleaseAssets(ctx, "qingstor", repo, release.GetID(), &github.ListOptions{PerPage: 100})
+	if err != nil {
+		log.Fatalf("list assets: %v", err)
 	}
 
+	for _, asset := range assets {
+		wg := &sync.WaitGroup{}
+		wg.Add(1)
+
+		go func(asset *github.ReleaseAsset) {
+			defer wg.Done()
+			path := fmt.Sprintf("%s/%s/%s", repo, release.GetTagName(), asset.GetName())
+
+			log.Printf("Check if file %s exists", path)
+			_, err := store.Stat(path)
+			if err != nil && errors.Is(err, services.ErrObjectNotExist) {
+				log.Printf("File %s not exists, try to upload", path)
+				downloadAndUpload(ctx, asset, path)
+
+				err = nil
+			}
+			if err != nil {
+				log.Fatalf("storage stat: %v", err)
+			}
+
+			log.Printf("File %s exists, try to update data", path)
+			url := fmt.Sprintf("https://%s.%s.qingstor.com/%s", meta.Name, location, path)
+			data.Add(repo, release.GetTagName(), asset.GetName(), url)
+		}(asset)
+
+		wg.Wait()
+	}
 }
 
 func downloadAndUpload(ctx context.Context, asset *github.ReleaseAsset, path string) {
