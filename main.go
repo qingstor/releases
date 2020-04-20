@@ -10,6 +10,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"sync"
 
 	"github.com/Xuanwo/storage"
 	"github.com/Xuanwo/storage/coreutils"
@@ -129,25 +130,34 @@ func listAssets(ctx context.Context, repo string, ch chan *github.RepositoryRele
 		}
 
 		for _, asset := range assets {
-			path := fmt.Sprintf("%s/%s/%s", repo, release.GetTagName(), asset.GetName())
+			wg := &sync.WaitGroup{}
+			wg.Add(1)
 
-			log.Printf("Check if file %s exists", path)
-			_, err := store.Stat(path)
-			if err != nil && errors.Is(err, services.ErrObjectNotExist) {
-				log.Printf("File %s not exists, try to upload", path)
-				downloadAndUpload(ctx, asset, path)
+			go func(asset *github.ReleaseAsset) {
+				defer wg.Done()
+				path := fmt.Sprintf("%s/%s/%s", repo, release.GetTagName(), asset.GetName())
 
-				err = nil
-			}
-			if err != nil {
-				log.Fatalf("storage stat: %v", err)
-			}
+				log.Printf("Check if file %s exists", path)
+				_, err := store.Stat(path)
+				if err != nil && errors.Is(err, services.ErrObjectNotExist) {
+					log.Printf("File %s not exists, try to upload", path)
+					downloadAndUpload(ctx, asset, path)
 
-			log.Printf("File %s exists, try to upload data", path)
-			url := fmt.Sprintf("https://%s.%s.qingstor.com/%s", meta.Name, location, path)
-			data.Add(repo, release.GetTagName(), asset.GetName(), url)
+					err = nil
+				}
+				if err != nil {
+					log.Fatalf("storage stat: %v", err)
+				}
+
+				log.Printf("File %s exists, try to update data", path)
+				url := fmt.Sprintf("https://%s.%s.qingstor.com/%s", meta.Name, location, path)
+				data.Add(repo, release.GetTagName(), asset.GetName(), url)
+			}(asset)
+
+			wg.Wait()
 		}
 	}
+
 }
 
 func downloadAndUpload(ctx context.Context, asset *github.ReleaseAsset, path string) {
