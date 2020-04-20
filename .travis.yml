@@ -7,10 +7,12 @@ script:
   - ./releaser
 
 deploy:
-  provider: pages
-  skip_cleanup: true
-  github_token: $GITHUB_TOKEN  # Set in the settings page of your repository, as a secure variable
-  keep_history: true
+  provider: pages:git
+  token: $GITHUB_TOKEN
+  edge: true
+
   target_branch: master
+  commit_message: "[skip ci] Update data.json"
+
   on:
     branch: master
