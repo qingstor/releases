@@ -21,7 +21,7 @@ import (
 	"golang.org/x/oauth2"
 )
 
-const dataFile = "site/data.json"
+const dataFile = "data.json"
 
 var (
 	data   *Releases
@@ -57,7 +57,7 @@ func setup(ctx context.Context) {
 	// Setup data
 	data := &Releases{}
 
-	content, err := ioutil.ReadFile("site/data.json")
+	content, err := ioutil.ReadFile(dataFile)
 	if err != nil {
 		log.Fatalf("read file: %v", err)
 	}
