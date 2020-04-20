@@ -32,6 +32,8 @@ var (
 
 var repos = []string{
 	"qsctl",
+	"qscamel",
+	"qsftpd",
 }
 
 func main() {
