@@ -3,8 +3,8 @@ os: linux
 go: "1.14"
 
 script:
-  - pushd cmd && go build . && popd
-  - ./cmd/releaser
+  - go build .
+  - ./releaser
 
 deploy:
   provider: pages

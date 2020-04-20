@@ -55,7 +55,7 @@ func main() {
 
 func setup(ctx context.Context) {
 	// Setup data
-	data := &Releases{}
+	data = &Releases{}
 
 	content, err := ioutil.ReadFile(dataFile)
 	if err != nil {
@@ -75,6 +75,7 @@ func setup(ctx context.Context) {
 	store, err = coreutils.OpenStorager(qingstor.Type,
 		pairs.WithCredential(credential.MustNewHmac(os.Getenv("QINGSTOR_ACCESS_KEY"), os.Getenv("QINGSTOR_SECRET_KEY"))),
 		pairs.WithName(os.Getenv("QINGSTOR_BUCKET_NAME")),
+		pairs.WithLocation(os.Getenv("QINGSTOR_BUCKET_LOCATION")),
 	)
 	if err != nil {
 		log.Fatalf("open storager: %v", err)
@@ -130,8 +131,10 @@ func listAssets(ctx context.Context, repo string, ch chan *github.RepositoryRele
 		for _, asset := range assets {
 			path := fmt.Sprintf("%s/%s/%s", repo, release.GetTagName(), asset.GetName())
 
+			log.Printf("Check if file %s exists", path)
 			_, err := store.Stat(path)
 			if err != nil && errors.Is(err, services.ErrObjectNotExist) {
+				log.Printf("File %s not exists, try to upload", path)
 				downloadAndUpload(ctx, asset, path)
 
 				err = nil
@@ -140,6 +143,7 @@ func listAssets(ctx context.Context, repo string, ch chan *github.RepositoryRele
 				log.Fatalf("storage stat: %v", err)
 			}
 
+			log.Printf("File %s exists, try to upload data", path)
 			url := fmt.Sprintf("https://%s.%s.qingstor.com/%s", meta.Name, location, path)
 			data.Add(repo, release.GetTagName(), asset.GetName(), url)
 		}
@@ -153,6 +157,7 @@ func downloadAndUpload(ctx context.Context, asset *github.ReleaseAsset, path str
 	}
 	defer os.Remove(tmp.Name())
 
+	log.Printf("Downloading file %s", path)
 	r, err := http.Get(asset.GetBrowserDownloadURL())
 	if err != nil {
 		log.Fatalf("get asset content: %v", err)
@@ -167,6 +172,7 @@ func downloadAndUpload(ctx context.Context, asset *github.ReleaseAsset, path str
 	tmp.Sync()
 	tmp.Seek(0, 0)
 
+	log.Printf("Uploading file %s", path)
 	err = store.Write(path, tmp, pairs.WithSize(n))
 	if err != nil {
 		log.Fatalf("upload to qingstor: %v", err)
